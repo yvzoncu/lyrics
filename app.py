@@ -99,7 +99,7 @@ else:
     index = faiss.IndexFlatIP(dimension)
     lyric_ids = []
 
-@app.get("/all-songs")
+@app.get("/api/all-songs")
 def list_songs(skip: int = 0, limit: int = 100):
     conn = get_db_connection()
     cursor = conn.cursor()
