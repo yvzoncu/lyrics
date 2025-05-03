@@ -90,5 +90,3 @@ def evaluator(input: str) -> list[str]:
     return cleaned_json['samples']
 
 
-a = MISTRAL_API_KEY
-print(a)
