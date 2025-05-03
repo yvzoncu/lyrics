@@ -118,7 +118,7 @@ def list_songs(skip: int = 0, limit: int = 100):
 
 
 
-@app.get("/lyrics")
+@app.get("/api/lyrics")
 async def list_all_lyrics(skip: int = 0, limit: int = 100):
     def db_operation():
         conn = get_db_connection()
@@ -140,7 +140,7 @@ async def list_all_lyrics(skip: int = 0, limit: int = 100):
     return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
 
 
-@app.get("/song-suggester")
+@app.get("/api/song-suggester")
 async def search(query: str = None, k: int = 5):
     def search_operation():
         # Handle empty query case
@@ -255,7 +255,7 @@ async def search(query: str = None, k: int = 5):
     return await asyncio.get_event_loop().run_in_executor(executor, search_operation)
 
 
-@app.get("/find-song-by-name")
+@app.get("/api/find-song-by-name")
 async def check_song_exists(song: str = Query(...)):
     def db_operation():
         conn = get_db_connection()
@@ -276,7 +276,7 @@ async def check_song_exists(song: str = Query(...)):
     return {"songs": [{"song": row[0], "artist": row[1]} for row in rows]}
 
 
-@app.post("/predict")
+@app.post("/api/predict")
 def predict_emotions(input: TextInput):
     # Get validation results from the evaluator API
     validation_result = evaluator(input=input)
@@ -301,7 +301,7 @@ def predict_emotions(input: TextInput):
     return {"success": True, "text": input.text, "emotions": top_emotions}
 
 
-@app.post("/fetch-and-process")
+@app.post("/api/fetch-and-process")
 async def fetch_and_process(request: SongRequest = Body(...)):
     conn = get_db_connection()
     cursor = conn.cursor()
