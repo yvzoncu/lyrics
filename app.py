@@ -14,6 +14,9 @@ from psycopg2.extras import DictCursor
 from lyrics_fetcher import LyricsFetcher
 from collections import defaultdict
 from user_prompt_evaluator import evaluator
+from dotenv import load_dotenv
+
+load_dotenv() 
 
 app = FastAPI()
 
