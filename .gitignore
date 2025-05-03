@@ -1,0 +1,41 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environment
+venv/
+.env/
+
+# Environment variables
+*.env
+
+# VSCode settings
+.vscode/
+
+# macOS / Windows files
+.DS_Store
+Thumbs.db
+
+# Python dependency files
+pip-log.txt
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Test coverage reports
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+*.py,cover
+
+# Mypy
+.mypy_cache/
+.dmypy.json
+
+# Pytest
+.pytest_cache/
+
+# Logs
+*.log
