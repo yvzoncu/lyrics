@@ -20,7 +20,7 @@ load_dotenv()
 
 app = FastAPI()
 
-executor = ThreadPoolExecutor(max_workers=4)
+executor = ThreadPoolExecutor(max_workers=2)
 
 lyrics_fetcher = LyricsFetcher() 
 
@@ -146,38 +146,33 @@ async def list_all_lyrics(skip: int = 0, limit: int = 100):
 @app.get("/api/song-suggester")
 async def search(query: str = None, k: int = 5):
     def search_operation():
-        # Handle empty query case
         if not query or query.strip() == "":
             return {
                 "error": "Empty query",
                 "message": "Please provide a non-empty search query containing text to analyze for emotions.",
                 "suggestion": "Try searching with a phrase or sentence that expresses an emotion."
-            }     
-        
+            }
+
         try:
-            # Try to generate the emotion vector and catch any potential errors
             query_vec = get_emotion_vector(query).reshape(1, -1).astype('float32')
             query_emotions = emotion_model(query)[0]
             sorted_query_emotions = sorted(query_emotions, key=lambda x: x['score'], reverse=True)
-            
-            # Check if the vector was generated successfully
+
             if np.isnan(query_vec).any() or np.isinf(query_vec).any() or np.linalg.norm(query_vec) < 1e-10:
                 return {
                     "error": "Invalid emotion vector",
                     "message": "Could not generate a valid emotion vector from your query.",
                     "suggestion": "Try using a different query with clearer emotional content."
                 }
-                
-            # Early return if no lyrics in the database
+
             if not lyric_ids:
                 return {
-                    "query": query, 
-                    "query_emotions": sorted_query_emotions[:5], 
+                    "query": query,
+                    "query_emotions": sorted_query_emotions[:5],
                     "results": [],
                     "message": "No lyrics in the database to search against."
                 }
 
-            # Proceed with search as normal
             distances, indices = index.search(query_vec, k)
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -196,59 +191,66 @@ async def search(query: str = None, k: int = 5):
                 row = cursor.fetchone()
                 if not row:
                     continue
-                vec = pickle.loads(row['embedding'])
-                all_labels = list(emotion_model.model.config.id2label.values())
-                
+
                 results.append({
                     "song": row['song'],
+                    "artist": row['artist'],
                     "lyric": row['lyric'],
                     "similarity_ratio": float(distances[0][i])
-           
                 })
 
             cursor.close()
             conn.close()
-            
-            # Add a message if no results were found
+
             if not results:
                 return {
-                    "query": query, 
-                    "query_emotions": sorted_query_emotions[:5], 
+                    "query": query,
+                    "query_emotions": sorted_query_emotions[:5],
                     "results": [],
                     "message": "No matching lyrics found for the emotional content of your query."
                 }
-            
-            song_scores = defaultdict(list)
+
+            # --- Updated scoring logic with artist retained ---
+            song_scores = defaultdict(lambda: {"artist": None, "scores": []})
 
             for entry in results:
-                song_scores[entry["song"]].append(entry["similarity_ratio"])
-            
+                song = entry["song"]
+                artist = entry["artist"]
+                score = entry["similarity_ratio"]
+                song_scores[song]["scores"].append(score)
+                song_scores[song]["artist"] = artist
+
             aggregated = []
 
-            for song, scores in song_scores.items():
+            for song, data in song_scores.items():
+                scores = data["scores"]
+                artist = data["artist"]
                 sorted_scores = sorted(scores, reverse=True)
                 top_scores = sorted_scores[:100]
                 average_top = sum(top_scores) / len(top_scores)
                 max_score = max(scores)
                 total = sum(top_scores)
-                score = round((average_top + max_score + total) / 3, 5) 
+                final_score = round((average_top + max_score + total) / 3, 5)
 
                 aggregated.append({
                     "song": song,
+                    "artist": artist,
                     "average_top_similarity": round(average_top, 5),
                     "max_similarity": round(max_score, 5),
                     "total_top_similarity": round(total, 5),
-                    "final_score": score,
+                    "final_score": final_score,
                     "count": len(scores)
-                                })
+                })
 
-                # Step 3: Rank songs by final_score
             ranked = sorted(aggregated, key=lambda x: x["final_score"], reverse=True)
-                
-            return {"query": query, "query_emotions": sorted_query_emotions[:5], "results": ranked}
-            
+
+            return {
+                "query": query,
+                "query_emotions": sorted_query_emotions[:3],
+                "results": ranked
+            }
+
         except Exception as e:
-            # Catch any unexpected errors during vector generation or search
             return {
                 "error": "Search error",
                 "message": f"An error occurred while processing your search: {str(e)}",
@@ -256,6 +258,7 @@ async def search(query: str = None, k: int = 5):
             }
 
     return await asyncio.get_event_loop().run_in_executor(executor, search_operation)
+
 
 
 @app.get("/api/find-song-by-name")
