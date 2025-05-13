@@ -474,13 +474,10 @@ async def search(query: str = None, k: int = 5):
 
         # Step 1: Evaluate if the query mentions specific songs or artists
         evaluation_result = evaluator(query)
-        print(evaluation_result)
 
         if not evaluation_result:
             return {
-                "error": "Evaluation error",
-                "message": "pronlem fetching.",
-                "suggestion": "Try simplifying your query or check if the service is working correctly.",
+                "error": "pronlem fetching",
             }
 
         success = evaluation_result.get("success")
@@ -509,12 +506,7 @@ def search_all_songs_by_emotion(query, k):
     """Find related songs by emotion from all songs in the database"""
     try:
         if not lyric_ids:
-            return {
-                "query": query,
-                "query_emotions": sorted_query_emotions[:5],
-                "results": [],
-                "message": "No lyrics in the database to search against.",
-            }
+            return {"error": "No lyrics in the database to search against"}
 
         distances, indices = index.search(query_vec, k)
         conn = get_db_connection()
@@ -552,10 +544,7 @@ def search_all_songs_by_emotion(query, k):
 
         if not results:
             return {
-                "query": query,
-                "query_emotions": sorted_query_emotions[:5],
-                "results": [],
-                "message": "No matching lyrics found for the emotional content of your query.",
+                "error": "No matching lyrics found for the emotional content of your query."
             }
 
         # --- Scoring logic with artist retained ---
@@ -604,8 +593,6 @@ def search_all_songs_by_emotion(query, k):
     except Exception as e:
         return {
             "error": "Search error",
-            "message": f"An error occurred while processing your emotion search: {str(e)}",
-            "suggestion": "Try simplifying your query or check if the service is working correctly.",
         }
 
 
@@ -656,12 +643,7 @@ def search_specific_songs_by_emotion(query, evaluation_result, k):
         lyrics = cursor.fetchall()
 
         if not lyrics:
-            return {
-                "query": query,
-                "query_emotions": sorted_query_emotions[:3],
-                "results": [],
-                "message": "No lyrics found for the specified songs/artists.",
-            }
+            return {"error": "No lyrics found for the specified songs/artists."}
 
         embeddings = np.array(
             [parse_embedding(row["embedding"]) for row in lyrics]
