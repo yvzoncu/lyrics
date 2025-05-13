@@ -476,6 +476,13 @@ async def search(query: str = None, k: int = 5):
         evaluation_result = evaluator(query)
         print(evaluation_result)
 
+        if not evaluation_result:
+            return {
+                "error": "Evaluation error",
+                "message": "pronlem fetching.",
+                "suggestion": "Try simplifying your query or check if the service is working correctly.",
+            }
+
         success = evaluation_result.get("success")
         if not success or success == "F":
             return {
