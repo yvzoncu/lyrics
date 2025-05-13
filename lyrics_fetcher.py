@@ -37,6 +37,10 @@ class LyricsFetcher:
             if not song:
                 return None
             
+
+            
+            print("Image URL:", song.song_art_image_url)
+
             return {
                 "metadata": {
                     "title": song.title,
