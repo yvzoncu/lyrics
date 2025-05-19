@@ -5,7 +5,9 @@ import re
 MISTRAL_API_KEY = "RXuqVFz52CqZ61kRjLWtzcMgfdoCNV3z"  # Your Mistral API key
 
 
-def send_mistral_request(user_prompt):
+def send_mistral_request(
+    user_prompt,
+):
     prompt = f"""
         You are an AI that analyzes and valiates user prompts.
         You have to analyze the user prompt and respond only as defined:
@@ -14,13 +16,8 @@ def send_mistral_request(user_prompt):
         You have 2 tasks.
 
         Task 1: 
-        - If the prompt contains of only a specific song, return following response:{{"success": "S", "query_type": "song", "song_names": "song title1, song title2", "artist_names": ""}}
-         
-        - If the prompt contains of only a specific artist,return following response:{{"success": "S", "query_type": "artist", "song_names": "", "artist_names": "artist name1, artist name2"}}
-
-        - If the prompt contains of only a specific artist and a song, return following response:{{"success": "S", "query_type": "artist_and_song", "song_names": "song title1, song title2", "artist_names": "artist name1, artist name2"}}  
-
-        - If the prompt contains a specific artist and other additional explanatoy text, return following response:{{"success": "S", "query_type": "artist_emotion", "song_names": "", "artist_names": "artist name1, artist name2"}}
+        
+        - If the prompt contains a specific artist or a specific song name or a specific search term,  return following response :{{"success": "S", "query_type": "custom", "song_names": "song title1, song title2", "artist_names": "artist name1, artist name2", "search":"item1, item2"}}
 
         
         Task 2: If prompt is not falling under above criteria;
@@ -84,3 +81,43 @@ def evaluator(input):
             return None
     else:
         return None
+
+
+def tag_finder(lyric, song, artist):
+    prompt = f"""
+        You are an AI that analyzes song lyrics with years of experiene.
+        Lyric: {lyric},
+        Song:{song},
+        Artist:{artist},
+        Analyse the song lyric of song {song} by {artist} and find max 5 unique keywords.
+        Use lyrics and your own knowladgebase and expertise to find best keywoords
+        Keywords you suggest should be highly related to the song and should remind the song.
+        Keywords should be one word.
+        Return only keywords nothing else as comma seperated. 
+        Fex: "Keyword1, Keyword2, Keyword3,"
+
+""".strip()
+
+    url = "https://api.mistral.ai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {MISTRAL_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    data = {
+        "model": "mistral-medium",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "stream": False,
+    }
+
+    response = requests.post(url, headers=headers, data=json.dumps(data))
+
+    # Handle the response
+    if response.status_code == 200:
+        content_json = response.json()
+        content_data = content_json["choices"][0]["message"]["content"]
+        word_list = [word.strip() for word in content_data.split(",")]
+        return json.dumps(word_list)
+
+    else:
+        return json.dumps([])
