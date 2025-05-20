@@ -74,9 +74,15 @@ async def search(query: str = None, k: int = 5):
     return await asyncio.get_event_loop().run_in_executor(executor, search_operation)
 
 
+def prompt_emotion_vector(values):
+    threshold = 0.01
+    labels = ["sadness", "joy", "love", "anger", "fear", "surprise"]
+    return [{label: value} for label, value in zip(labels, values) if value > threshold]
+
+
 def search_all_songs_by_emotion(query, k):
     prompt_vector = text_to_emotion(query)
-    print(prompt_vector)
+
     result = []
 
     sql_query = """
@@ -117,7 +123,7 @@ def search_all_songs_by_emotion(query, k):
                 }
             )
 
-        return result  # Moved outside the loop
+        return {"emotions": prompt_emotion_vector(prompt_vector), "items": result}
 
     finally:
         cursor.close()
@@ -129,11 +135,12 @@ def search_by_custom_input(query, evaluation_result, k):
     labels = ["sadness", "joy", "love", "anger", "fear", "surprise"]
 
     max_idx = max(range(len(prompt_vector)), key=lambda i: prompt_vector[i])
+
     dominant_emotion_in_prompt = {
         "emotion": labels[max_idx],
         "value": round(prompt_vector[max_idx], 6),
     }
-    print(dominant_emotion_in_prompt)
+
     result = []
 
     # Convert comma-separated strings to lists and clean whitespace
@@ -240,7 +247,7 @@ def search_by_custom_input(query, evaluation_result, k):
                 }
             )
 
-        return result
+        return {"emotions": prompt_emotion_vector(prompt_vector), "items": result}
 
     finally:
         cursor.close()
