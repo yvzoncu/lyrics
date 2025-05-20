@@ -113,13 +113,13 @@ def search_all_songs_by_emotion(query, k):
         for song in songs:
             result.append(
                 {
+                    "song_id": song["id"],
                     "song": song["song"],
                     "artist": song["artist"],
                     "full_lyric": song["full_lyric"],
                     "dominants": song["dominants"],
                     "tags": song["tags"],
                     "genre": song["genre"],
-                    "count": song["hits"],
                 }
             )
 
@@ -238,6 +238,7 @@ def search_by_custom_input(query, evaluation_result, k):
         for song in songs:
             result.append(
                 {
+                    "song_id": song["id"],
                     "song": song["song"],
                     "artist": song["artist"],
                     "full_lyric": song["full_lyric"],
