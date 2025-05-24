@@ -475,3 +475,48 @@ async def update_user_playlist(playlist_id: int, song_id: str, action: str = "ad
             conn.close()
 
     return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
+
+
+@app.get("/api/get-song-by-id")
+async def get_song_by_id(id: int):
+    """
+    Get song by id
+    """
+
+    def db_operation():
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=DictCursor)
+
+        try:
+            # Query to get all playlists for the user
+            cursor.execute(
+                """
+                SELECT id, song, artist, full_lyric, dominants, tags, genre
+                FROM songs
+                WHERE id = %s
+                """,
+                (id,),
+            )
+
+            song = cursor.fetchone()
+            if not song:
+                raise HTTPException(status_code=404, detail="Song not found")
+            song_item = {
+                "song_id": song["id"],
+                "song": song["song"],
+                "artist": song["artist"],
+                "full_lyric": "",
+                "dominants": song["dominants"],
+                "tags": song["tags"],
+                "genre": song["genre"],
+            }
+
+            return song_item
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        finally:
+            cursor.close()
+            conn.close()
+
+    return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
