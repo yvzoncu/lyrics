@@ -48,14 +48,17 @@ def get_db_connection():
 
 
 @app.get("/api/new-song-suggester")
-async def search(query: str = None, k: int = 5):
+async def search(query: str, user_id: str, k: int = 5):
     def search_operation():
+
         if not query or query.strip() == "":
             return {
                 "error": "Empty query",
                 "message": "Please provide a non-empty search query containing text to analyze for emotions.",
                 "suggestion": "Try searching with a phrase or sentence that expresses an emotion.",
             }
+
+        val = insert_user_query(user_id, query)
 
         # Step 1: Evaluate if the query mentions specific songs or artists
         evaluation_result = evaluator(query)
@@ -72,6 +75,25 @@ async def search(query: str = None, k: int = 5):
         return search_all_songs_by_emotion(query, k)
 
     return await asyncio.get_event_loop().run_in_executor(executor, search_operation)
+
+
+def insert_user_query(user_id, query):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=DictCursor)
+
+    sql_query = """
+        INSERT INTO user_queries (user_id, query)
+        VALUES (%s, %s)
+        RETURNING id;
+    """
+    try:
+        cursor.execute(sql_query, (user_id, query))
+        query_id = cursor.fetchone()["id"]
+        conn.commit()
+        return query_id
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def prompt_emotion_vector(values):
