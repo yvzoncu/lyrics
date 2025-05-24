@@ -1,14 +1,17 @@
-from fastapi import FastAPI, Query, Body
+from fastapi import FastAPI, Query, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import psycopg2
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import os
-from psycopg2.extras import DictCursor
+import json
+from psycopg2.extras import DictCursor, Json
 from lyrics_fetcher import LyricsFetcher
 from evaluator import evaluator
 from dotenv import load_dotenv
 from compare import text_to_emotion
+from pydantic import BaseModel
+from typing import List, Dict, Any
 
 
 load_dotenv()
@@ -275,3 +278,200 @@ def search_by_custom_input(query, evaluation_result, k):
     finally:
         cursor.close()
         conn.close()
+
+
+class PlaylistItem(BaseModel):
+    song_id: int
+
+
+class CreatePlaylistRequest(BaseModel):
+    user_id: str
+    playlist_name: str
+    playlist_items: List[PlaylistItem]
+
+
+@app.get("/api/get-user-playlist")
+async def get_user_playlist(user_id: str):
+    """
+    Get all playlists for a specific user
+    """
+
+    def db_operation():
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=DictCursor)
+
+        try:
+            # Query to get all playlists for the user
+            cursor.execute(
+                """
+                SELECT id, user_id, playlist_name, playlist_items, created_at
+                FROM user_playlist
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                """,
+                (user_id,),
+            )
+
+            playlists = []
+            for row in cursor.fetchall():
+                playlists.append(
+                    {
+                        "id": row["id"],
+                        "user_id": row["user_id"],
+                        "playlist_name": row["playlist_name"],
+                        "playlist_items": row["playlist_items"],
+                    }
+                )
+
+            return {"playlists": playlists}
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        finally:
+            cursor.close()
+            conn.close()
+
+    return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
+
+
+@app.post("/api/create-user-playlist")
+async def create_user_playlist(request: CreatePlaylistRequest):
+    """
+    Create a new playlist for a user
+    """
+
+    def db_operation():
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=DictCursor)
+
+        try:
+            # Convert playlist items to JSON string
+            playlist_items_json = Json(
+                [{"song_id": item.song_id} for item in request.playlist_items]
+            )
+
+            # Insert the new playlist
+            cursor.execute(
+                """
+                INSERT INTO user_playlist (user_id, playlist_name, playlist_items)
+                VALUES (%s, %s, %s)
+                RETURNING id, created_at
+                """,
+                (request.user_id, request.playlist_name, playlist_items_json),
+            )
+
+            result = cursor.fetchone()
+            conn.commit()
+
+            return {
+                "id": result["id"],
+                "user_id": request.user_id,
+                "playlist_name": request.playlist_name,
+                "playlist_items": request.playlist_items,
+                "created_at": (
+                    result["created_at"].isoformat() if result["created_at"] else None
+                ),
+            }
+
+        except Exception as e:
+            conn.rollback()
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        finally:
+            cursor.close()
+            conn.close()
+
+    return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
+
+
+@app.post("/api/update-user-playlist")
+async def update_user_playlist(playlist_id: int, song_id: str, action: str = "add"):
+    """
+    Add or remove a song from an existing playlist
+    """
+
+    def db_operation():
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=DictCursor)
+
+        try:
+            # First get the current playlist items
+            cursor.execute(
+                "SELECT playlist_items FROM user_playlist WHERE id = %s", (playlist_id,)
+            )
+
+            playlist = cursor.fetchone()
+            if not playlist:
+                raise HTTPException(status_code=404, detail="Playlist not found")
+
+            playlist_items = playlist["playlist_items"]
+
+            if action == "add":
+                # Check if song already exists in playlist
+                song_exists = any(
+                    item.get("song_id") == song_id for item in playlist_items
+                )
+
+                if not song_exists:
+                    # Add the new song to the playlist items
+                    playlist_items.append({"song_id": song_id})
+
+                    # Update the playlist with the new items
+                    cursor.execute(
+                        "UPDATE user_playlist SET playlist_items = %s::jsonb WHERE id = %s RETURNING id",
+                        (json.dumps(playlist_items), playlist_id),
+                    )
+
+                    conn.commit()
+
+                    return {
+                        "message": "Song added to playlist",
+                        "playlist_id": playlist_id,
+                        "song_id": song_id,
+                    }
+                else:
+                    return {
+                        "message": "Song already exists in playlist",
+                        "playlist_id": playlist_id,
+                        "song_id": song_id,
+                    }
+            elif action == "remove":
+                # Filter out the song to remove
+                new_playlist_items = [
+                    item for item in playlist_items if item.get("song_id") != song_id
+                ]
+
+                if len(new_playlist_items) < len(playlist_items):
+                    # Update the playlist with the filtered items
+                    cursor.execute(
+                        "UPDATE user_playlist SET playlist_items = %s::jsonb WHERE id = %s RETURNING id",
+                        (json.dumps(new_playlist_items), playlist_id),
+                    )
+
+                    conn.commit()
+
+                    return {
+                        "message": "Song removed from playlist",
+                        "playlist_id": playlist_id,
+                        "song_id": song_id,
+                    }
+                else:
+                    return {
+                        "message": "Song not found in playlist",
+                        "playlist_id": playlist_id,
+                        "song_id": song_id,
+                    }
+            else:
+                raise HTTPException(
+                    status_code=400, detail="Invalid action. Use 'add' or 'remove'."
+                )
+
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            conn.rollback()
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        finally:
+            cursor.close()
+            conn.close()
+
+    return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
