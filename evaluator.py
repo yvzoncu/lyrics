@@ -72,6 +72,7 @@ def extract_and_clean_json(content: str) -> dict:
 
 def evaluator(input):
     res = send_mistral_request(input)
+    print(res)
     if res:
         content = res["choices"][0]["message"]["content"]
         cleaned_res = extract_and_clean_json(content)

@@ -621,3 +621,45 @@ async def get_song_by_id(id: int):
             conn.close()
 
     return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
+
+
+@app.get("/api/get-playlist-by-playlist-id")
+async def get_user_playlist(id: int):
+
+    def db_operation():
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=DictCursor)
+
+        try:
+            cursor.execute(
+                """
+                SELECT id, user_id, playlist_name, playlist_items
+                FROM user_playlist
+                WHERE id = %s
+                ORDER BY created_at DESC
+                """,
+                (id,),
+            )
+
+            playlist = cursor.fetchone()
+            if not playlist:
+                raise HTTPException(status_code=404, detail="Playlist not found")
+
+            selected_playlist = {
+                "id": playlist["id"],
+                "user_id": playlist["user_id"],
+                "playlist_name": playlist["playlist_name"],
+                "playlist_items": playlist["playlist_items"],
+            }
+
+            items = get_song_playlist_items_by_id(conn, playlist["id"])
+
+            return {"playlist": selected_playlist, "items": items}
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        finally:
+            cursor.close()
+            conn.close()
+
+    return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
