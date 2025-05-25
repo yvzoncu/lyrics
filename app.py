@@ -290,6 +290,39 @@ class CreatePlaylistRequest(BaseModel):
     playlist_items: List[PlaylistItem]
 
 
+# playlist ittem fetcher
+def get_song_playlist_items_by_id(conn, playlist_id: int):
+    result = []
+    try:
+        with conn.cursor(cursor_factory=DictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT s.*
+                FROM user_playlist p
+                JOIN LATERAL jsonb_array_elements(p.playlist_items) AS item ON TRUE
+                JOIN songs s ON (item->>'song_id')::INT = s.id
+                WHERE p.id = %s
+                """,
+                (playlist_id,),
+            )
+            songs = cursor.fetchall()
+            for song in songs:
+                result.append(
+                    {
+                        "song_id": song["id"],
+                        "song": song["song"],
+                        "artist": song["artist"],
+                        "full_lyric": "",
+                        "dominants": song["dominants"],
+                        "tags": song["tags"],
+                        "genre": song["genre"],
+                    }
+                )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    return result
+
+
 @app.get("/api/get-user-playlist")
 async def get_user_playlist(user_id: str):
     """
@@ -363,7 +396,7 @@ async def create_user_playlist(request: CreatePlaylistRequest):
             result = cursor.fetchone()
             conn.commit()
 
-            return {
+            playlist = {
                 "id": result["id"],
                 "user_id": request.user_id,
                 "playlist_name": request.playlist_name,
@@ -372,6 +405,10 @@ async def create_user_playlist(request: CreatePlaylistRequest):
                     result["created_at"].isoformat() if result["created_at"] else None
                 ),
             }
+
+            playlist_items = get_song_playlist_items_by_id(conn, result["id"])
+
+            return {"playlist": playlist, "items": playlist_items}
 
         except Exception as e:
             conn.rollback()
@@ -384,7 +421,7 @@ async def create_user_playlist(request: CreatePlaylistRequest):
 
 
 @app.post("/api/update-user-playlist")
-async def update_user_playlist(playlist_id: int, song_id: str, action: str = "add"):
+async def update_user_playlist(playlist_id: int, song_id: int, action: str = "add"):
     """
     Add or remove a song from an existing playlist
     """
@@ -395,15 +432,15 @@ async def update_user_playlist(playlist_id: int, song_id: str, action: str = "ad
 
         try:
             # First get the current playlist items
-            cursor.execute(
-                "SELECT playlist_items FROM user_playlist WHERE id = %s", (playlist_id,)
-            )
+            cursor.execute("SELECT * FROM user_playlist WHERE id = %s", (playlist_id,))
 
             playlist = cursor.fetchone()
             if not playlist:
                 raise HTTPException(status_code=404, detail="Playlist not found")
+            print(playlist)
 
             playlist_items = playlist["playlist_items"]
+            print(playlist_items)
 
             if action == "add":
                 # Check if song already exists in playlist
@@ -418,21 +455,30 @@ async def update_user_playlist(playlist_id: int, song_id: str, action: str = "ad
                     # Update the playlist with the new items
                     cursor.execute(
                         "UPDATE user_playlist SET playlist_items = %s::jsonb WHERE id = %s RETURNING id",
-                        (json.dumps(playlist_items), playlist_id),
+                        (Json(playlist_items), playlist_id),
                     )
 
                     conn.commit()
 
+                    pl = {
+                        "id": playlist["id"],
+                        "user_id": playlist["user_id"],
+                        "playlist_name": playlist["playlist_name"],
+                        "playlist_items": playlist_items,
+                    }
+
+                    items = get_song_playlist_items_by_id(conn, playlist_id)
+
                     return {
                         "message": "Song added to playlist",
-                        "playlist_id": playlist_id,
-                        "song_id": song_id,
+                        "playlist": pl,
+                        "items": items,
                     }
                 else:
                     return {
                         "message": "Song already exists in playlist",
-                        "playlist_id": playlist_id,
-                        "song_id": song_id,
+                        "playlist": {},
+                        "items": [],
                     }
             elif action == "remove":
                 # Filter out the song to remove
@@ -449,16 +495,26 @@ async def update_user_playlist(playlist_id: int, song_id: str, action: str = "ad
 
                     conn.commit()
 
+                    pl = {
+                        "id": playlist["id"],
+                        "user_id": playlist["user_id"],
+                        "playlist_name": playlist["playlist_name"],
+                        "playlist_items": new_playlist_items,
+                    }
+
+                    items = get_song_playlist_items_by_id(conn, playlist_id)
+
                     return {
                         "message": "Song removed from playlist",
-                        "playlist_id": playlist_id,
-                        "song_id": song_id,
+                        "playlist": pl,
+                        "items": items,
                     }
+
                 else:
                     return {
                         "message": "Song not found in playlist",
-                        "playlist_id": playlist_id,
-                        "song_id": song_id,
+                        "playlist_id": {},
+                        "song_id": [],
                     }
             else:
                 raise HTTPException(
@@ -508,40 +564,9 @@ async def get_song_playlist_by_id(id: int):
                 "playlist_items": playlist["playlist_items"],
             }
 
-            cursor.execute(
-                """
-                SELECT
-                  s.*
-                FROM
-                  user_playlist p,
-                  jsonb_array_elements(p.playlist_items) AS item
-                JOIN
-                  songs s
-                ON
-                  (item->>'song_id')::INT = s.id
-                WHERE
-                	p.id =  %s
-                """,
-                (id,),
-            )
+            items = get_song_playlist_items_by_id(conn, playlist["id"])
 
-            songs = cursor.fetchall()
-            result = []
-
-            for song in songs:
-                result.append(
-                    {
-                        "song_id": song["id"],
-                        "song": song["song"],
-                        "artist": song["artist"],
-                        "full_lyric": "",
-                        "dominants": song["dominants"],
-                        "tags": song["tags"],
-                        "genre": song["genre"],
-                    }
-                )
-
-            return {"playlist": selected_playlist, "items": result}
+            return {"playlist": selected_playlist, "items": items}
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
