@@ -367,6 +367,71 @@ async def get_user_playlist(user_id: str):
     return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
 
 
+@app.delete("/api/delete-user-playlist")
+async def delete_user_playlist(user_id: str, playlist_id: int):
+    """
+    Delete a playlist for a user and return remaining playlists
+    """
+
+    def db_operation():
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=DictCursor)
+
+        try:
+            # Check if playlist exists and belongs to the user
+            cursor.execute(
+                """
+                SELECT id FROM user_playlist 
+                WHERE id = %s AND user_id = %s
+                """,
+                (playlist_id, user_id),
+            )
+
+            playlist = cursor.fetchone()
+            if not playlist:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Playlist not found or doesn't belong to the user",
+                )
+
+            # Delete the playlist
+            cursor.execute("DELETE FROM user_playlist WHERE id = %s", (playlist_id,))
+
+            conn.commit()
+
+            # Get remaining playlists for the user
+            cursor.execute(
+                """
+                SELECT id, user_id, playlist_name, playlist_items
+                FROM user_playlist
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                """,
+                (user_id,),
+            )
+
+            playlists = []
+            for row in cursor.fetchall():
+                playlists.append(
+                    {
+                        "id": row["id"],
+                        "user_id": row["user_id"],
+                        "playlist_name": row["playlist_name"],
+                        "playlist_items": row["playlist_items"],
+                    }
+                )
+
+            return {"playlists": playlists}
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        finally:
+            cursor.close()
+            conn.close()
+
+    return await asyncio.get_event_loop().run_in_executor(executor, db_operation)
+
+
 @app.post("/api/create-user-playlist")
 async def create_user_playlist(request: CreatePlaylistRequest):
     """
