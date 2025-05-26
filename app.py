@@ -385,7 +385,7 @@ async def create_user_playlist(request: CreatePlaylistRequest):
                 """
                 INSERT INTO user_playlist (user_id, playlist_name, playlist_items)
                 VALUES (%s, %s, %s)
-                RETURNING id, created_at
+                RETURNING id, user_id, playlist_name, playlist_items
                 """,
                 (request.user_id, request.playlist_name, playlist_items_json),
             )
