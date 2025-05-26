@@ -369,9 +369,6 @@ async def get_user_playlist(user_id: str):
 
 @app.post("/api/create-user-playlist")
 async def create_user_playlist(request: CreatePlaylistRequest):
-    """
-    Create a new playlist for a user
-    """
 
     def db_operation():
         conn = get_db_connection()
@@ -392,23 +389,30 @@ async def create_user_playlist(request: CreatePlaylistRequest):
                 """,
                 (request.user_id, request.playlist_name, playlist_items_json),
             )
-
-            result = cursor.fetchone()
             conn.commit()
 
-            playlist = {
-                "id": result["id"],
-                "user_id": request.user_id,
-                "playlist_name": request.playlist_name,
-                "playlist_items": request.playlist_items,
-                "created_at": (
-                    result["created_at"].isoformat() if result["created_at"] else None
-                ),
-            }
+            cursor.execute(
+                """
+            SELECT id, user_id, playlist_name, playlist_items, created_at
+            FROM user_playlist
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            """,
+                (request.user_id,),
+            )
 
-            playlist_items = get_song_playlist_items_by_id(conn, result["id"])
+            playlists = []
 
-            return {"playlist": playlist, "items": playlist_items}
+            for row in cursor.fetchall():
+                playlists.append(
+                    {
+                        "id": row["id"],
+                        "user_id": row["user_id"],
+                        "playlist_name": row["playlist_name"],
+                        "playlist_items": row["playlist_items"],
+                    }
+                )
+            return {"playlists": playlists}
 
         except Exception as e:
             conn.rollback()
