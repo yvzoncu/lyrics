@@ -389,6 +389,14 @@ async def create_user_playlist(request: CreatePlaylistRequest):
                 """,
                 (request.user_id, request.playlist_name, playlist_items_json),
             )
+            created = cursor.fetchone()
+            new_playlist = {
+                "id": created["id"],
+                "user_id": created["user_id"],
+                "playlist_name": created["playlist_name"],
+                "playlist_items": created["playlist_items"],
+            }
+
             conn.commit()
 
             cursor.execute(
@@ -412,7 +420,7 @@ async def create_user_playlist(request: CreatePlaylistRequest):
                         "playlist_items": row["playlist_items"],
                     }
                 )
-            return {"playlists": playlists}
+            return {"new_playlist": new_playlist, "playlists": playlists}
 
         except Exception as e:
             conn.rollback()
