@@ -369,6 +369,9 @@ async def get_user_playlist(user_id: str):
 
 @app.post("/api/create-user-playlist")
 async def create_user_playlist(request: CreatePlaylistRequest):
+    """
+    Create a new playlist for a user
+    """
 
     def db_operation():
         conn = get_db_connection()
@@ -385,19 +388,25 @@ async def create_user_playlist(request: CreatePlaylistRequest):
                 """
                 INSERT INTO user_playlist (user_id, playlist_name, playlist_items)
                 VALUES (%s, %s, %s)
-                RETURNING id, user_id, playlist_name, playlist_items
+                RETURNING id, created_at
                 """,
                 (request.user_id, request.playlist_name, playlist_items_json),
             )
-            created = cursor.fetchone()
-            new_playlist = {
-                "id": created["id"],
-                "user_id": created["user_id"],
-                "playlist_name": created["playlist_name"],
-                "playlist_items": created["playlist_items"],
+
+            result = cursor.fetchone()
+            conn.commit()
+
+            playlist = {
+                "id": result["id"],
+                "user_id": request.user_id,
+                "playlist_name": request.playlist_name,
+                "playlist_items": request.playlist_items,
+                "created_at": (
+                    result["created_at"].isoformat() if result["created_at"] else None
+                ),
             }
 
-            conn.commit()
+            new_playlist_items = get_song_playlist_items_by_id(conn, result["id"])
 
             cursor.execute(
                 """
@@ -420,7 +429,10 @@ async def create_user_playlist(request: CreatePlaylistRequest):
                         "playlist_items": row["playlist_items"],
                     }
                 )
-            return {"new_playlist": new_playlist, "playlists": playlists}
+
+            new_item = {"playlist": playlist, "items": new_playlist_items}
+
+            return {"playlists": playlists, "new_item": new_item}
 
         except Exception as e:
             conn.rollback()
